@@ -182,11 +182,12 @@ func fq_read_msg(conn net.Conn) (*Message, error) {
 			msg.Hops[i] = ne.Uint32(hopbuf[i*4:])
 		}
 	}
-	if msg.Payload_len, err = fq_read_uint32(conn); err != nil {
+	var payload_len uint32
+	if payload_len, err = fq_read_uint32(conn); err != nil {
 		return nil, err
 	}
-	msg.Payload = make([]byte, int(msg.Payload_len))
-	if err = fq_read_complete(conn, msg.Payload, int(msg.Payload_len)); err != nil {
+	msg.Payload = make([]byte, int(payload_len))
+	if err = fq_read_complete(conn, msg.Payload, int(payload_len)); err != nil {
 		return nil, err
 	}
 	return msg, nil
@@ -223,7 +224,7 @@ func fq_write_msg(conn net.Conn, msg *Message, peermode bool) error {
 			return fmt.Errorf("bad write msgid")
 		}
 	}
-	if err := fq_write_long_cmd(conn, msg.Payload_len, msg.Payload); err != nil {
+	if err := fq_write_long_cmd(conn, uint32(len(msg.Payload)), msg.Payload); err != nil {
 		return err
 	}
 	return nil

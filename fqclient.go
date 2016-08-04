@@ -127,7 +127,6 @@ type Message struct {
 	Hops                    []uint32
 	Route, Sender, Exchange fq_rk
 	Sender_msgid            fq_msgid
-	Payload_len             uint32
 	Arrival_time            uint64
 	Payload                 []byte
 }
@@ -249,7 +248,6 @@ func NewMessage(exchange, route string, payload []byte) *Message {
 	msg.Route = Rk(route)
 	if payload != nil {
 		msg.Payload = payload
-		msg.Payload_len = uint32(len(msg.Payload))
 	}
 	rand.Read(msg.Sender_msgid.d[0:8])
 	return msg
