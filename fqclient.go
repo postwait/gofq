@@ -26,16 +26,16 @@ package fq
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unsafe"
-
-	"github.com/nu7hatch/gouuid"
 )
 
 func getNativeEndian() binary.ByteOrder {
@@ -346,11 +346,15 @@ func (c *Client) Creds(host string, port uint16, sender, pass string) error {
 			c.queue_type = sparts[2]
 		}
 	} else {
-		id, err := uuid.NewV4()
-		if err != nil {
-			return err
-		}
-		c.queue = "q-" + id.String()
+		myname, err := os.Hostname()
+		if err != nil { myname = "unknown" }
+		parts := strings.SplitN(myname, ".", 2)
+		myname = parts[0]
+		pid := os.Getpid()
+		var rndb [4]byte
+		rand.Read(rndb[:])
+		rnd := hex.EncodeToString(rndb[:])
+		c.queue = "q-" + myname + "-" + strconv.Itoa(pid) + "-" + rnd
 	}
 	if c.queue_type == "" {
 		c.queue_type = FQ_DEFAULT_QUEUE_TYPE
