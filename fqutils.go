@@ -133,6 +133,9 @@ func fq_write_long_cmd(conn net.Conn, dlen uint32, data []byte) error {
 	if err := fq_write_uint32(conn, dlen); err != nil {
 		return err
 	}
+	if dlen == 0 {
+		return nil
+	}
 	n, err := conn.Write(data[:int(dlen)])
 	if err != nil {
 		return err
@@ -187,8 +190,10 @@ func fq_read_msg(conn net.Conn) (*Message, error) {
 		return nil, err
 	}
 	msg.Payload = make([]byte, int(payload_len))
-	if err = fq_read_complete(conn, msg.Payload, int(payload_len)); err != nil {
-		return nil, err
+	if payload_len > 0 {
+		if err = fq_read_complete(conn, msg.Payload, int(payload_len)); err != nil {
+			return nil, err
+		}
 	}
 	return msg, nil
 }
@@ -213,15 +218,17 @@ func fq_write_msg(conn net.Conn, msg *Message, peermode bool) error {
 		if err := fq_write_uint8(conn, uint8(nhops)); err != nil {
 			return err
 		}
-		hopbuf := make([]byte, 4*nhops)
-		for i := 0; i < int(nhops); i++ {
-			ne.PutUint32(hopbuf[(i*4):], msg.Hops[i])
-		}
-		if n, err := conn.Write(hopbuf); err != nil || n != len(hopbuf) {
-			if err != nil {
-				return err
+		if nhops > 0 {
+			hopbuf := make([]byte, 4*nhops)
+			for i := 0; i < int(nhops); i++ {
+				ne.PutUint32(hopbuf[(i*4):], msg.Hops[i])
 			}
-			return fmt.Errorf("bad write msgid")
+			if n, err := conn.Write(hopbuf); err != nil || n != len(hopbuf) {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("bad write msgid")
+			}
 		}
 	}
 	if err := fq_write_long_cmd(conn, uint32(len(msg.Payload)), msg.Payload); err != nil {

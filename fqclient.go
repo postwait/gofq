@@ -220,8 +220,8 @@ type Client struct {
 	q                             chan *Message
 	backq                         chan *backMessage
 	hooks                         Hooks
-	signal                        chan bool
 	enqueue_mu                    sync.Mutex
+	signal, done_cmd, done_data   chan bool
 }
 
 // Rk will take an input string and build an fq_rk that is used
@@ -347,7 +347,9 @@ func (c *Client) Creds(host string, port uint16, sender, pass string) error {
 		}
 	} else {
 		myname, err := os.Hostname()
-		if err != nil { myname = "unknown" }
+		if err != nil {
+			myname = "unknown"
+		}
 		parts := strings.SplitN(myname, ".", 2)
 		myname = parts[0]
 		pid := os.Getpid()
@@ -473,6 +475,8 @@ func (c *Client) Connect() error {
 		c.error(err)
 		return err
 	}
+	c.done_data = make(chan bool, 1)
+	c.done_cmd = make(chan bool, 1)
 	c.connected = true
 
 	go c.worker()
@@ -480,10 +484,13 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// Shutdown disconnects from fq.
+// Shutdown disconnects from fq and waits for any queued message
+// to be published.  Note that if you cannot connect to complete
+// publication, this can hang.
 func (c *Client) Shutdown() {
-	c.stop = true
-	c.connected = false
+	close(c.q)
+	<-c.done_data
+	<-c.done_cmd
 }
 
 // DataBacklog returns the current number of messages queued
@@ -583,6 +590,7 @@ func (c *Client) data_connect_internal() (net.Conn, error) {
 	if err != nil {
 		return conn, err
 	}
+	conn.(*net.TCPConn).SetNoDelay(false)
 	err = fq_write_uint32(conn, cmd)
 	if err != nil {
 		return conn, err
@@ -901,11 +909,16 @@ func (c *Client) worker() {
 			c.hooks.DisconnectHook(c)
 		}
 	}
+	close(c.done_cmd)
 }
 func (c *Client) data_sender() {
-	for c.data_ready {
+	for c.data_ready && c.stop == false {
 		msg, ok := <-c.q
 		if !ok {
+			c.stop = true
+			// We close here to cause the read in data_receiver
+			// to error, otherwise it will hang forever.
+			c.data_conn.Close()
 			return
 		}
 		err := fq_write_msg(c.data_conn, msg, c.peermode)
@@ -944,7 +957,7 @@ func (c *Client) data_worker_loop() bool {
 	return true
 }
 func (c *Client) data_worker() {
-	backoff := 0
+	backoff := time.Duration(0)
 	for c.stop == false {
 		<-c.signal
 		if c.data_ready {
@@ -953,14 +966,17 @@ func (c *Client) data_worker() {
 			}
 		}
 		if backoff > 0 {
-			time.Sleep(time.Duration(backoff+(4096000-(int(rng.Int31())%8192000))) * time.Microsecond)
+			four_ms_jitter := 4096 - (int(rng.Int31()) % 8192)
+			jitter := time.Duration(four_ms_jitter) * time.Millisecond
+			time.Sleep(backoff + jitter)
 		} else {
-			backoff = 16384000
+			backoff = 16 * time.Millisecond
 		}
-		if backoff < 1000000000 {
+		if backoff < time.Second {
 			backoff += (backoff >> 4)
 		}
 	}
+	close(c.done_data)
 }
 
 // A sample (and useful) Hook binding that allows for simple subscription.
