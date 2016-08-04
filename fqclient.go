@@ -131,12 +131,42 @@ type Message struct {
 	Payload                 []byte
 }
 
+// Hooks is the interface one implements to drive an fq session.
+//
+// If the Client has been set to synchronous mode via SetSynchronous
+// the hooks are invoked causally from invocations of Receive.
+// Otherwise hooks are called as response to commands arrive or
+// actions happen (in another go routine).
+//
+// AuthHook is called upon response to an authentication attempt
+// caused by Connect (and any subsequent automatic reconnections).
+// If err is nil, authentication was successful.
+//
+// BindHook is called upon response to a Bind request.  The same
+// BindReq passed to Bind will be presented here and OutRouteId
+// will be set.  If OutRouteId is FQ_BIND_ILLEGAL, the bind failed.
+//
+// UnbindHook is called upon response to an Unbind request. The
+// OutSuccess indicates whether the request was handled successfully.
+//
+// MessageHook is called upon reception of a message from the fq
+// server.  If true is returned, the message will not be enqueued
+// for delivery via Receive().
+//
+// DisconnectHook is called when the client disconnects. Nothing
+// is required on the programmers part to reconnect; it is automastic.
+//
+// StatusHook is invoked upon response to a Status request.
+//
+// ErrorLogHook is invoked when the client encouters any sort of error.
+// All typicaly runtime errors are fully recoverably without special
+// action by the programmer.  Exceptions include malformed requests
+// such as invalid Bind requests or invalid Creds.
 type Hooks interface {
 	AuthHook(c *Client, err error)
 	BindHook(c *Client, req *BindReq)
 	UnbindHook(c *Client, req *UnbindReq)
 	MessageHook(c *Client, msg *Message) bool
-	CleanupHook(c *Client)
 	DisconnectHook(c *Client)
 	StatusHook(c *Client, stats map[string]uint32)
 	ErrorLogHook(c *Client, error string)
@@ -968,8 +998,6 @@ func (h *transientSubHooks) BindHook(c *Client, breq *BindReq) {
 	}
 }
 func (h *transientSubHooks) UnbindHook(c *Client, breq *UnbindReq) {
-}
-func (h *transientSubHooks) CleanupHook(c *Client) {
 }
 func (h *transientSubHooks) DisconnectHook(c *Client) {
 }

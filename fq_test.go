@@ -32,8 +32,6 @@ func (h *MyFqHooks) BindHook(c *fq.Client, breq *fq.BindReq) {
 }
 func (h *MyFqHooks) UnbindHook(c *fq.Client, breq *fq.UnbindReq) {
 }
-func (h *MyFqHooks) CleanupHook(c *fq.Client) {
-}
 func (h *MyFqHooks) DisconnectHook(c *fq.Client) {
 	h.test.Errorf("Unexpected disconnect")
 }
