@@ -8,7 +8,6 @@ for complete asynchronous control over the command channel.
 
 For a relatively simple (and useful) example see:
 
-  * [gofqingpub](https://github.com/postwait/gofq/gofqingpub/gofqingpub.go)
-  * [gofqingsub](https://github.com/postwait/gofq/gofqingsub/gofqingsub.go)
-
+  * [gofqingpub](https://github.com/postwait/gofq/blob/master/gofqingpub/gofqingpub.go)
+  * [gofqingsub](https://github.com/postwait/gofq/blob/master/gofqingsub/gofqingsub.go)
 
