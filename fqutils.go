@@ -144,10 +144,10 @@ func fq_write_long_cmd(conn net.Conn, dlen uint32, data []byte) error {
 }
 func fq_read_rk(conn net.Conn, rk *fq_rk) error {
 	var err error
-	if rk.len, err = fq_read_uint8(conn); err != nil {
+	if rk.Len, err = fq_read_uint8(conn); err != nil {
 		return err
 	}
-	if err = fq_read_complete(conn, rk.name[:], int(rk.len)); err != nil {
+	if err = fq_read_complete(conn, rk.Name[:], int(rk.Len)); err != nil {
 		return err
 	}
 	return nil
@@ -177,6 +177,7 @@ func fq_read_msg(conn net.Conn) (*Message, error) {
 		if err = fq_read_complete(conn, hopbuf, 4*int(nhops)); err != nil {
 			return nil, err
 		}
+		msg.Hops = make([]uint32, nhops)
 		for i := 0; i < int(nhops); i++ {
 			msg.Hops[i] = ne.Uint32(hopbuf[i*4:])
 		}
@@ -191,10 +192,10 @@ func fq_read_msg(conn net.Conn) (*Message, error) {
 	return msg, nil
 }
 func fq_write_msg(conn net.Conn, msg *Message, peermode bool) error {
-	if err := fq_write_byte_cmd(conn, msg.Exchange.len, msg.Exchange.name[:]); err != nil {
+	if err := fq_write_byte_cmd(conn, msg.Exchange.Len, msg.Exchange.Name[:]); err != nil {
 		return err
 	}
-	if err := fq_write_byte_cmd(conn, msg.Route.len, msg.Route.name[:]); err != nil {
+	if err := fq_write_byte_cmd(conn, msg.Route.Len, msg.Route.Name[:]); err != nil {
 		return err
 	}
 	if n, err := conn.Write(msg.Sender_msgid.d[:]); err != nil || n != 16 {
@@ -204,17 +205,11 @@ func fq_write_msg(conn net.Conn, msg *Message, peermode bool) error {
 		return fmt.Errorf("bad write msgid")
 	}
 	if peermode {
-		if err := fq_write_byte_cmd(conn, msg.Sender.len, msg.Sender.name[:]); err != nil {
+		if err := fq_write_byte_cmd(conn, msg.Sender.Len, msg.Sender.Name[:]); err != nil {
 			return err
 		}
-		nhops := uint8(0)
-		for i := 0; i < FQ_MAX_HOPS; i++ {
-			if msg.Hops[i] == 0 {
-				break
-			}
-			nhops++
-		}
-		if err := fq_write_uint8(conn, nhops); err != nil {
+		nhops := len(msg.Hops)
+		if err := fq_write_uint8(conn, uint8(nhops)); err != nil {
 			return err
 		}
 		hopbuf := make([]byte, 4*nhops)

@@ -12,6 +12,7 @@ type MyFqHooks struct {
 	test  *testing.T
 	bound chan uint32
 	msgs  chan *fq.Message
+	stats map[string]uint32
 }
 
 func (h *MyFqHooks) AuthHook(c *fq.Client, err error) {
@@ -38,6 +39,9 @@ func (h *MyFqHooks) DisconnectHook(c *fq.Client) {
 }
 func (h *MyFqHooks) ErrorLogHook(c *fq.Client, err string) {
 	log.Print(err)
+}
+func (h *MyFqHooks) StatusHook(c *fq.Client, stats map[string]uint32) {
+	h.stats = stats
 }
 func (h *MyFqHooks) MessageHook(c *fq.Client, msg *fq.Message) bool {
 	h.msgs <- msg
@@ -68,6 +72,9 @@ func TestSendRcv(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 	msg := fq.NewMessage("logging", "test.gotest.oneoff", []byte("BOO"))
 	fqclient.Publish(msg)
+
+	fqclient.Status()
+
 	select {
 	case nmsg := <-hooks.msgs:
 		if !bytes.Equal(nmsg.Payload, msg.Payload) {
@@ -75,6 +82,19 @@ func TestSendRcv(t *testing.T) {
 		}
 	case <-time.NewTimer(2 * time.Second).C:
 		t.Errorf("Message recv timed out")
+	}
+
+	time.Sleep(250 * time.Millisecond)
+
+	if hooks.stats == nil {
+		t.Errorf("statistics requested, but not found")
+	} else {
+		if _, ok := hooks.stats["routed"]; !ok {
+			t.Errorf("statistic 'routed' missing")
+		}
+		if _, ok := hooks.stats["dropped"]; !ok {
+			t.Errorf("statistic 'dropped' missing")
+		}
 	}
 }
 
