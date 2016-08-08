@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/postwait/gofq"
 	"os"
+	"strings"
 )
 
 var host = flag.String("host", "localhost", "Fq Host")
@@ -34,9 +35,13 @@ func main() {
 				a := msg.Hops[len(msg.Hops)-1]
 				sender_ip = fmt.Sprintf("%d.%d.%d.%d", byte(a>>24), byte(a>>16), byte(a>>8), byte(a))
 			}
-			fmt.Printf("[%s@%s] [%s] %s\n", msg.Sender.ToString(),
-				sender_ip, msg.Route.ToString(),
-				string(msg.Payload))
+			lf := "\n"
+			payload := string(msg.Payload)
+			if strings.HasSuffix(payload, "\n") {
+				lf = ""
+			}
+			fmt.Printf("[%s@%s] [%s] %s%s", msg.Sender.ToString(),
+				sender_ip, msg.Route.ToString(), payload, lf)
 		case err := <-hooks.ErrorsC:
 			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		}
