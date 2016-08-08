@@ -34,7 +34,7 @@ func fq_read_complete(conn net.Conn, data []byte, want int) error {
 		panic("requested buffer overrun")
 	}
 	for {
-		n, err := conn.Read(data[sofar:(want - sofar)])
+		n, err := conn.Read(data[sofar:want])
 		if err != nil {
 			return err
 		}
