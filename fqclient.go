@@ -848,7 +848,10 @@ func (c *Client) worker_loop() {
 			default:
 			}
 			time.Sleep(c.cmd_hb_interval)
-			hb <- true
+			select {
+			case hb <- true:
+			default:
+			}
 		}
 		close(hb)
 	})(c, hb_chan, hb_quit_chan)
@@ -908,17 +911,16 @@ func (c *Client) worker() {
 		if c.hooks != nil {
 			c.hooks.DisconnectHook(c)
 		}
+		c.data_conn.Close()
 	}
 	close(c.done_cmd)
 }
 func (c *Client) data_sender() {
+	defer c.data_conn.Close()
 	for c.data_ready && c.stop == false {
 		msg, ok := <-c.q
 		if !ok {
 			c.stop = true
-			// We close here to cause the read in data_receiver
-			// to error, otherwise it will hang forever.
-			c.data_conn.Close()
 			return
 		}
 		err := fq_write_msg(c.data_conn, msg, c.peermode)
