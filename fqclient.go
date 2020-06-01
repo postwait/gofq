@@ -55,6 +55,7 @@ func getNativeEndian() binary.ByteOrder {
 var ne = getNativeEndian()
 var be = binary.BigEndian
 var rng = rand.New(rand.NewSource(time.Now().Unix() * int64(os.Getpid())))
+var rngLk sync.Mutex
 
 type peeringMode uint32
 
@@ -911,7 +912,9 @@ func (c *Client) worker() {
 		if c.hooks != nil {
 			c.hooks.DisconnectHook(c)
 		}
-		c.data_conn.Close()
+		if c.data_conn != nil {
+			c.data_conn.Close()
+		}
 	}
 	close(c.done_cmd)
 }
@@ -968,7 +971,9 @@ func (c *Client) data_worker() {
 			}
 		}
 		if backoff > 0 {
+			rngLk.Lock()
 			four_ms_jitter := 4096 - (int(rng.Int31()) % 8192)
+			rngLk.Unlock()
 			jitter := time.Duration(four_ms_jitter) * time.Millisecond
 			time.Sleep(backoff + jitter)
 		} else {
@@ -1016,7 +1021,7 @@ func (h *transientSubHooks) AddBinding(exchange, program string) {
 }
 func (h *transientSubHooks) BindHook(c *Client, breq *BindReq) {
 	if breq.OutRouteId == 0xffffffff {
-		h.ErrorsC <- fmt.Errorf("binding failure: %s, %s", breq.Exchange, breq.Program)
+		h.ErrorsC <- fmt.Errorf("binding failure: %v, %v", breq.Exchange, breq.Program)
 	}
 }
 func (h *transientSubHooks) UnbindHook(c *Client, breq *UnbindReq) {
