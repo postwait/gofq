@@ -55,6 +55,7 @@ func getNativeEndian() binary.ByteOrder {
 var ne = getNativeEndian()
 var be = binary.BigEndian
 var rng = rand.New(rand.NewSource(time.Now().Unix() * int64(os.Getpid())))
+var rngM sync.Mutex
 
 type peeringMode uint32
 
@@ -206,6 +207,7 @@ type Client struct {
 	key                           fq_rk
 	cmd_conn, data_conn           net.Conn
 	stop                          bool
+	hb_mu                         sync.RWMutex
 	cmd_hb_needed                 bool
 	cmd_hb_interval               time.Duration
 	cmd_hb_max_age                time.Duration
@@ -381,8 +383,10 @@ func (c *Client) SetHeartBeat(interval time.Duration) {
 	if interval > time.Second {
 		interval = time.Second
 	}
+	c.hb_mu.Lock()
 	c.cmd_hb_interval = interval
 	c.cmd_hb_max_age = 3 * interval
+	c.hb_mu.Unlock()
 	if c.data_ready {
 		c.HeartBeat()
 	}
@@ -392,6 +396,9 @@ func (c *Client) SetHeartBeat(interval time.Duration) {
 // the connection is connection is considered dead.  Silence
 // in this case is considered the time since the last heartbeat.
 func (c *Client) SetHeartBeatMaxAge(interval time.Duration) {
+	c.hb_mu.Lock()
+	defer c.hb_mu.Unlock()
+
 	c.cmd_hb_max_age = interval
 }
 
@@ -402,7 +409,11 @@ func (c *Client) HeartBeat() {
 		return
 	}
 	e := &fq_cmd_instr{cmd: fq_PROTO_HBREQ}
+
+	c.hb_mu.RLock()
 	e.data.heartbeat.interval = c.cmd_hb_interval
+	c.hb_mu.RUnlock()
+
 	c.cmdq <- e
 }
 
@@ -695,8 +706,10 @@ func (c *Client) command_receiver(cmds chan *fq_cmd_instr, cx_queue chan *fq_cmd
 		}
 		switch cmd {
 		case uint16(fq_PROTO_HB):
+			c.hb_mu.Lock()
 			c.cmd_hb_last = time.Now()
 			c.cmd_hb_needed = true
+			c.hb_mu.Unlock()
 		case uint16(fq_PROTO_STATUS):
 			if req == nil || req.cmd != fq_PROTO_STATUSREQ {
 				c.error(fmt.Errorf("protocol violation (exp stats)"))
@@ -774,8 +787,11 @@ func (c *Client) command_send(req *fq_cmd_instr, cx_queue chan *fq_cmd_instr) er
 		if err := fq_write_uint16(c.cmd_conn, uint16(hb_ms)); err != nil {
 			return err
 		}
+
+		c.hb_mu.Lock()
 		c.cmd_hb_interval = req.data.heartbeat.interval
 		c.cmd_hb_last = time.Now()
+		c.hb_mu.Unlock()
 	case fq_PROTO_BINDREQ:
 		cx_queue <- req
 		if err := fq_write_uint16(c.cmd_conn, uint16(req.cmd)); err != nil {
@@ -847,7 +863,10 @@ func (c *Client) worker_loop() {
 				keep_going = false
 			default:
 			}
-			time.Sleep(c.cmd_hb_interval)
+			c.hb_mu.RLock()
+			interval := c.cmd_hb_interval
+			c.hb_mu.RUnlock()
+			time.Sleep(interval)
 			select {
 			case hb <- true:
 			default:
@@ -891,7 +910,9 @@ func (c *Client) worker_loop() {
 				return
 			}
 		case <-hb_chan:
+			c.hb_mu.RLock()
 			if c.cmd_hb_needed {
+				c.hb_mu.RUnlock()
 				if err := fq_write_uint16(c.cmd_conn, uint16(fq_PROTO_HB)); err != nil {
 					c.error(err)
 					return
@@ -901,6 +922,8 @@ func (c *Client) worker_loop() {
 					c.error(fmt.Errorf("dead: missing heartbeat"))
 					return
 				}
+			} else {
+				c.hb_mu.RUnlock()
 			}
 		}
 	}
@@ -911,7 +934,9 @@ func (c *Client) worker() {
 		if c.hooks != nil {
 			c.hooks.DisconnectHook(c)
 		}
-		c.data_conn.Close()
+		if c.data_conn != nil {
+			c.data_conn.Close()
+		}
 	}
 	close(c.done_cmd)
 }
@@ -968,7 +993,9 @@ func (c *Client) data_worker() {
 			}
 		}
 		if backoff > 0 {
+			rngM.Lock()
 			four_ms_jitter := 4096 - (int(rng.Int31()) % 8192)
+			rngM.Unlock()
 			jitter := time.Duration(four_ms_jitter) * time.Millisecond
 			time.Sleep(backoff + jitter)
 		} else {
