@@ -72,7 +72,7 @@ func main() {
 				lf = ""
 			}
 			if !IsAsciiPrintable(payload) {
-				payload = "[binary data]"
+				payload = "[binary data]\n"
 			}
 			fmt.Printf("[%s@%s] [%s] %s%s", msg.Sender.ToString(),
 				sender_ip, msg.Route.ToString(), payload, lf)
